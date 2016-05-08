@@ -1,0 +1,7 @@
+[package]
+name = "lossyq"
+version = "0.1.0"
+authors = ["David Beck <david.beck.priv@gmail.com>"]
+license = "MIT or Apache 2.0"
+
+[dependencies]
