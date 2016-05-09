@@ -1,6 +1,6 @@
 # lossyq for Rust
 
-`lossyq` is a single-publisher, single-publisher queue with certain characteristics:
+`lossyq` is a single-publisher, single-subscriber queue with certain characteristics:
 
 - at the creation of the queue, you need to decide how big the queue need to be
 - the queue will be allocated at creation time with the specified amount of elements (see notes below)
