@@ -22,9 +22,8 @@ impl <T : Copy> CircularBuffer<T> {
 
     let mut size = size;
 
-    if size == 0 { panic!("size cannot be zero"); }
     // size of multiples of 64k won't interact well with the writer's flags
-    if size%(64*1024) == 0 { size += 1; }
+    if size%(64*1024) == 0 || size == 0 { size += 1; }
 
     let mut ret = CircularBuffer {
       seqno      : AtomicUsize::new(0),
@@ -59,7 +58,11 @@ impl <T : Copy> CircularBuffer<T> {
     // write the data to the temporary writer buffer
     match opt.as_mut() {
       Some(v) => setter(v),
-      None    => { panic!("write tmp pos is out of bounds {}", self.write_tmp); }
+      None => {
+        // this cannot happen under any normal circumstances, so I just silently ignore it
+        println!("dodgy thing 1");
+        return self.seqno.load(Ordering::SeqCst);
+      }
     }
 
     // calculate writer flag position
@@ -86,7 +89,10 @@ impl <T : Copy> CircularBuffer<T> {
           };
         };
       },
-      None => { panic!("buffer index is out of bounds {}", pos); }
+      None => {
+        // this cannot happen under normal circumstances so just ignore it
+        println!("dodgy thing 2");
+      }
     }
 
     // increase sequence number
@@ -121,10 +127,18 @@ impl <T : Copy> CircularBuffer<T> {
                 break;
               }
             },
-            None => { panic!("buffer index is out of bounds {}", pos); }
+            None => {
+              // this cannot happen under any normal circumstances so just ignore it, but won't continue
+              println!("dodgy thing 3");
+              break;
+            }
           }
         },
-        None => { panic!("read_priv index is out of bounds {}", count); }
+        None => {
+          // this cannot happen under any normal circumstances so just ignore it, but won't continue
+          println!("dodgy thing 4");
+          break;
+        }
       }
     }
 
@@ -196,12 +210,6 @@ impl<T: Copy + Send> Receiver<T> {
 #[cfg(test)]
 mod tests {
   use super::CircularBuffer;
-
-  #[test]
-  #[should_panic]
-  fn create_zero_sized() {
-    let _x = CircularBuffer::new(0, 0 as i32);
-  }
 
   #[test]
   fn empty_buffer() {
