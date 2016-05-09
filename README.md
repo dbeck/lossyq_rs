@@ -5,7 +5,7 @@
 - at the creation of the queue, you need to decide how big the queue need to be
 - the queue will be allocated at creation time with the specified amount of elements (see notes below)
 - when adding an element, the put closure will receive a reference to the element to be updated, so no allocation needed to add new elements
-- when adding elements, the updater won't ever be blocked. it doesn't care about if there was a reader to read the element
+- when adding elements, the updater won't ever be blocked. it doesn't care if there was a reader to read the element or not
 - the reader maintains the last position read, and it will read the elements up to the last written position
 - if the reader is slower then the writer, then it may not see elements that was written in the meanwhile
 
