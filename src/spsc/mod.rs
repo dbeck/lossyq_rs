@@ -20,7 +20,11 @@ pub struct CircularBufferIterator<'a, T: 'a + Copy> {
 impl <T : Copy> CircularBuffer<T> {
   fn new(size : usize, default_value : T) -> CircularBuffer<T> {
 
+    let mut size = size;
+
     if size == 0 { panic!("size cannot be zero"); }
+    // size of multiples of 64k won't interact well with the writer's flags
+    if size%(64*1024) == 0 { size += 1; }
 
     let mut ret = CircularBuffer {
       seqno      : AtomicUsize::new(0),
