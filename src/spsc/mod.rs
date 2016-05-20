@@ -14,7 +14,13 @@ struct CircularBuffer<T : Copy> {
 pub struct CircularBufferIterator<'a, T: 'a + Copy> {
   data   : &'a [T],
   revpos : &'a [usize],
+  start  : usize,
   count  : usize,
+}
+
+pub trait IterRange {
+  fn from(&self) -> usize;
+  fn to(&self) -> usize;
 }
 
 impl <T : Copy> CircularBuffer<T> {
@@ -145,6 +151,7 @@ impl <T : Copy> CircularBuffer<T> {
     CircularBufferIterator {
       data    : self.data.as_slice(),
       revpos  : self.read_priv.as_slice(),
+      start   : seqno,
       count   : count,
     }
   }
@@ -156,11 +163,21 @@ impl <'_, T: '_ + Copy> Iterator for CircularBufferIterator<'_, T> {
   fn next(&mut self) -> Option<T> {
     if self.count > 0 {
       self.count -= 1;
+      self.start += 1;
       let pos : usize = self.revpos[self.count];
       Some(self.data[pos])
     } else {
       None
     }
+  }
+}
+
+impl <'_, T: '_ + Copy> IterRange for CircularBufferIterator<'_, T> {
+  fn from(&self) -> usize {
+    self.start
+  }
+  fn to(&self) -> usize {
+    self.start + self.count
   }
 }
 
@@ -213,8 +230,48 @@ mod tests {
 
   #[test]
   fn empty_buffer() {
+    use spsc::IterRange;
+
     let mut x = CircularBuffer::new(1, 0 as i32);
-    assert_eq!(x.iter().count(), 0);
+    {
+      assert_eq!(x.iter().count(), 0);
+    }
+    {
+      let i = x.iter();
+      assert_eq!(i.from(),0);
+      assert_eq!(i.to(),0);
+    }
+  }
+
+  #[test]
+  fn add_one() {
+    use spsc::IterRange;
+    let mut x = CircularBuffer::new(10, 0 as i32);
+    {
+      let pos = x.put(|v| *v = 1);
+      assert_eq!(pos, 0);
+      let i = x.iter();
+      assert_eq!(i.from(), 0);
+      assert_eq!(i.to(), 1);
+    }
+    {
+      x.put(|v| *v = 2);
+      x.put(|v| *v = 3);
+      let mut i = x.iter();
+      assert_eq!(i.to(), 3);
+      assert_eq!(i.from(), 1);
+      i.next();
+      assert_eq!(i.to(), 3);
+      assert_eq!(i.from(), 2);
+    }
+    {
+      x.put(|v| *v = 4);
+      let pos = x.put(|v| *v = 5);
+      assert_eq!(pos, 4);
+      let i = x.iter();
+      assert_eq!(i.count, 2);
+      assert_eq!(i.start, 3);
+    }
   }
 
   #[test]
