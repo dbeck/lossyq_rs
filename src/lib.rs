@@ -19,6 +19,27 @@ mod tests {
   }
 
   #[test]
+  fn at_most_once() {
+    let (mut tx, mut rx) = spsc::channel(20, 0 as i32);
+    tx.put(|v| *v = 1);
+    tx.put(|v| *v = 2);
+    tx.put(|v| *v = 3);
+    {
+      // first iterator processes the single element
+      // assumes I process everything else in the iterator
+      let mut it = rx.iter();
+      assert_eq!(Some(1), it.next());
+    }
+    {
+      // the second iterator gets nothing, since the first
+      // iterator received the whole range no matter if it
+      // has really called a next on them ot not
+      let mut it = rx.iter();
+      assert_eq!(None, it.next());
+    }
+  }
+
+  #[test]
   fn range() {
     use std::thread;
     use spsc::IterRange;
@@ -30,9 +51,10 @@ mod tests {
       }
     });
     t.join().unwrap();
-    let (from,to) = rx.iter().get_range();
+    let i = rx.iter();
+    let (from,to) = i.get_range();
     assert_eq!(from, 1);
     assert_eq!(to, 3);
+    assert_eq!(Some(1),i.next_id());
   }
-
 }

@@ -46,6 +46,32 @@ As in the example above the `put` function receives a closure that in turn recei
 
 When reading, the `iter` function receives an iterator that has a reference to all readable elements at the moment. If the writer writes more elements to the queue, the iterator will still be valid, only that it won't see the newly written elements. To see them, a new iterator needs to be created by a new `iter` call.
 
+## At most once delivery
+
+The circular buffer maintains the reader's position. When we get an iterator it is increased and the next `iter()` call will return a different set of items (or empty).
+
+```rust
+fn at_most_once() {
+  let (mut tx, mut rx) = spsc::channel(20, 0 as i32);
+  tx.put(|v| *v = 1);
+  tx.put(|v| *v = 2);
+  tx.put(|v| *v = 3);
+  {
+    // first iterator processes the single element
+    // assumes I process everything else in the iterator
+    let mut it = rx.iter();
+    assert_eq!(Some(1), it.next());
+  }
+  {
+    // the second iterator gets nothing, since the first
+    // iterator received the whole range no matter if it
+    // has really called a next on them ot not
+    let mut it = rx.iter();
+    assert_eq!(None, it.next());
+  }
+}
+```
+
 # Rationale
 
 Let me emphasize the fact that the reader may lose updates. I believe this is not a problem, only a certain property to live with. Other queue implementations choose to, either make the queue larger when it becomes full, or block the writer until the reader processed some from the queue. I think all of these are valid choices and they have consequences. When we allocate more memory for the queue, we might obviously run out of it, then we go swapping and the whole system is cursed. The other choice is when we block the writer, the writer performance is limited by the reader.

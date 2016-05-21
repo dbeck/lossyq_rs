@@ -20,6 +20,7 @@ pub struct CircularBufferIterator<'a, T: 'a + Copy> {
 
 pub trait IterRange {
   fn get_range(&self) -> (usize, usize);
+  fn next_id(&self) -> Option<usize>;
 }
 
 impl <T : Copy> CircularBuffer<T> {
@@ -175,6 +176,13 @@ impl <'_, T: '_ + Copy> IterRange for CircularBufferIterator<'_, T> {
   fn get_range(&self) -> (usize, usize) {
     (self.start, self.start+self.count)
   }
+  fn next_id(&self) -> Option<usize> {
+    if self.count > 0 {
+      Some(self.start)
+    } else {
+      None
+    }
+  }
 }
 
 use std::cell::UnsafeCell;
@@ -233,9 +241,11 @@ mod tests {
       assert_eq!(x.iter().count(), 0);
     }
     {
-      let (from,to) = x.iter().get_range();
+      let i = x.iter();
+      let (from,to) = i.get_range();
       assert_eq!(from,0);
       assert_eq!(to,0);
+      assert_eq!(None, i.next_id());
     }
   }
 
@@ -250,6 +260,7 @@ mod tests {
       let (from,to) = i.get_range();
       assert_eq!(from, 0);
       assert_eq!(to, 1);
+      assert_eq!(Some(0), i.next_id());
     }
     {
       x.put(|v| *v = 2);
@@ -258,10 +269,12 @@ mod tests {
       let (from, to) = i.get_range();
       assert_eq!(from, 1);
       assert_eq!(to, 3);
+      assert_eq!(Some(1), i.next_id());
       i.next();
       let (from,to) = i.get_range();
       assert_eq!(from, 2);
       assert_eq!(to, 3);
+      assert_eq!(Some(2), i.next_id());
     }
     {
       x.put(|v| *v = 4);
