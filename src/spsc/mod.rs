@@ -19,8 +19,7 @@ pub struct CircularBufferIterator<'a, T: 'a + Copy> {
 }
 
 pub trait IterRange {
-  fn from(&self) -> usize;
-  fn to(&self) -> usize;
+  fn get_range(&self) -> (usize, usize);
 }
 
 impl <T : Copy> CircularBuffer<T> {
@@ -173,11 +172,8 @@ impl <'_, T: '_ + Copy> Iterator for CircularBufferIterator<'_, T> {
 }
 
 impl <'_, T: '_ + Copy> IterRange for CircularBufferIterator<'_, T> {
-  fn from(&self) -> usize {
-    self.start
-  }
-  fn to(&self) -> usize {
-    self.start + self.count
+  fn get_range(&self) -> (usize, usize) {
+    (self.start, self.start+self.count)
   }
 }
 
@@ -237,9 +233,9 @@ mod tests {
       assert_eq!(x.iter().count(), 0);
     }
     {
-      let i = x.iter();
-      assert_eq!(i.from(),0);
-      assert_eq!(i.to(),0);
+      let (from,to) = x.iter().get_range();
+      assert_eq!(from,0);
+      assert_eq!(to,0);
     }
   }
 
@@ -251,18 +247,21 @@ mod tests {
       let pos = x.put(|v| *v = 1);
       assert_eq!(pos, 0);
       let i = x.iter();
-      assert_eq!(i.from(), 0);
-      assert_eq!(i.to(), 1);
+      let (from,to) = i.get_range();
+      assert_eq!(from, 0);
+      assert_eq!(to, 1);
     }
     {
       x.put(|v| *v = 2);
       x.put(|v| *v = 3);
       let mut i = x.iter();
-      assert_eq!(i.to(), 3);
-      assert_eq!(i.from(), 1);
+      let (from, to) = i.get_range();
+      assert_eq!(from, 1);
+      assert_eq!(to, 3);
       i.next();
-      assert_eq!(i.to(), 3);
-      assert_eq!(i.from(), 2);
+      let (from,to) = i.get_range();
+      assert_eq!(from, 2);
+      assert_eq!(to, 3);
     }
     {
       x.put(|v| *v = 4);
