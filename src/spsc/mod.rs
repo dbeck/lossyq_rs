@@ -1,8 +1,8 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-struct CircularBuffer<T : Copy> {
+struct CircularBuffer<T> {
   seqno       : AtomicUsize,        // the ID of the last written item
-  data        : Vec<T>,             // (2*n)+1 preallocated elements
+  data        : Vec<Option<T>>,             // (2*n)+1 preallocated elements
   size        : usize,              // n
 
   buffer      : Vec<AtomicUsize>,   // (positions+seqno)[]
@@ -11,8 +11,8 @@ struct CircularBuffer<T : Copy> {
   max_read    : usize,              // reader's last read seqno
 }
 
-pub struct CircularBufferIterator<'a, T: 'a + Copy> {
-  data   : &'a [T],
+pub struct CircularBufferIterator<'a, T: 'a> {
+  data   : &'a mut [Option<T>],
   revpos : &'a [usize],
   start  : usize,
   count  : usize,
@@ -23,8 +23,8 @@ pub trait IterRange {
   fn next_id(&self) -> Option<usize>;
 }
 
-impl <T : Copy> CircularBuffer<T> {
-  fn new(size : usize, default_value : T) -> CircularBuffer<T> {
+impl <T> CircularBuffer<T> {
+  fn new(size : usize) -> CircularBuffer<T> {
 
     let mut size = size;
 
@@ -42,24 +42,27 @@ impl <T : Copy> CircularBuffer<T> {
     };
 
     // make sure there is enough place and fill it with the
-    // default value
-    ret.data.resize((size*2)+1, default_value);
+    // default value (1+2*size)
+    ret.data.push(None);
 
     for i in 0..size {
       ret.buffer.push(AtomicUsize::new((1+i) << 16));
       ret.read_priv.push(1+size+i);
+      // 2*size
+      ret.data.push(None);
+      ret.data.push(None);
     }
 
     ret
   }
 
   fn put<F>(&mut self, setter: F) -> usize
-    where F : FnMut(&mut T)
+    where F : FnMut(&mut Option<T>)
   {
     let mut setter = setter;
 
     // get a reference to the data
-    let mut opt : Option<&mut T> = self.data.get_mut(self.write_tmp);
+    let mut opt : Option<&mut Option<T>> = self.data.get_mut(self.write_tmp);
 
     // write the data to the temporary writer buffer
     match opt.as_mut() {
@@ -149,7 +152,7 @@ impl <T : Copy> CircularBuffer<T> {
     }
 
     CircularBufferIterator {
-      data    : self.data.as_slice(),
+      data    : self.data.as_mut_slice(),
       revpos  : self.read_priv.as_slice(),
       start   : seqno,
       count   : count,
@@ -157,22 +160,25 @@ impl <T : Copy> CircularBuffer<T> {
   }
 }
 
-impl <'_, T: '_ + Copy> Iterator for CircularBufferIterator<'_, T> {
+impl <'_, T: '_> Iterator for CircularBufferIterator<'_, T> {
   type Item = T;
 
   fn next(&mut self) -> Option<T> {
+    use std::mem;
     if self.count > 0 {
       self.count -= 1;
       self.start += 1;
       let pos : usize = self.revpos[self.count];
-      Some(self.data[pos])
+      let mut ret : Option<T> = None;
+      mem::swap(&mut ret, &mut self.data[pos]);
+      ret
     } else {
       None
     }
   }
 }
 
-impl <'_, T: '_ + Copy> IterRange for CircularBufferIterator<'_, T> {
+impl <'_, T: '_> IterRange for CircularBufferIterator<'_, T> {
   fn get_range(&self) -> (usize, usize) {
     (self.start, self.start+self.count)
   }
@@ -188,37 +194,36 @@ impl <'_, T: '_ + Copy> IterRange for CircularBufferIterator<'_, T> {
 use std::cell::UnsafeCell;
 use std::sync::Arc;
 
-pub struct Sender<T: Copy> {
+pub struct Sender<T> {
   inner: Arc<UnsafeCell<CircularBuffer<T>>>,
 }
 
-unsafe impl<T: Copy> Send for Sender<T> { }
+unsafe impl<T> Send for Sender<T> { }
 
-pub struct Receiver<T: Copy> {
+pub struct Receiver<T> {
   inner: Arc<UnsafeCell<CircularBuffer<T>>>,
 }
 
-unsafe impl<T: Copy> Send for Receiver<T> { }
+unsafe impl<T> Send for Receiver<T> { }
 
-pub fn channel<T: Copy + Send>(size : usize,
-                               default_value : T) -> (Sender<T>, Receiver<T>) {
-    let a = Arc::new(UnsafeCell::new(CircularBuffer::new(size, default_value)));
+pub fn channel<T: Send>(size : usize) -> (Sender<T>, Receiver<T>) {
+    let a = Arc::new(UnsafeCell::new(CircularBuffer::new(size)));
     (Sender::new(a.clone()), Receiver::new(a))
 }
 
-impl<T: Copy + Send> Sender<T> {
+impl<T: Send> Sender<T> {
   fn new(inner: Arc<UnsafeCell<CircularBuffer<T>>>) -> Sender<T> {
     Sender { inner: inner, }
   }
 
   pub fn put<F>(&mut self, setter: F) -> usize
-    where F : FnMut(&mut T)
+    where F : FnMut(&mut Option<T>)
   {
     unsafe { (*self.inner.get()).put(setter) }
   }
 }
 
-impl<T: Copy + Send> Receiver<T> {
+impl<T: Send> Receiver<T> {
   fn new(inner: Arc<UnsafeCell<CircularBuffer<T>>>) -> Receiver<T> {
     Receiver { inner: inner, }
   }
@@ -236,7 +241,7 @@ mod tests {
   fn empty_buffer() {
     use spsc::IterRange;
 
-    let mut x = CircularBuffer::new(1, 0 as i32);
+    let mut x = CircularBuffer::<i32>::new(1);
     {
       assert_eq!(x.iter().count(), 0);
     }
@@ -252,9 +257,9 @@ mod tests {
   #[test]
   fn add_one() {
     use spsc::IterRange;
-    let mut x = CircularBuffer::new(10, 0 as i32);
+    let mut x = CircularBuffer::new(10);
     {
-      let pos = x.put(|v| *v = 1);
+      let pos = x.put(|v| *v = Some(1));
       assert_eq!(pos, 0);
       let i = x.iter();
       let (from,to) = i.get_range();
@@ -263,8 +268,8 @@ mod tests {
       assert_eq!(Some(0), i.next_id());
     }
     {
-      x.put(|v| *v = 2);
-      x.put(|v| *v = 3);
+      x.put(|v| *v = Some(2));
+      x.put(|v| *v = Some(3));
       let mut i = x.iter();
       let (from, to) = i.get_range();
       assert_eq!(from, 1);
@@ -277,8 +282,8 @@ mod tests {
       assert_eq!(Some(2), i.next_id());
     }
     {
-      x.put(|v| *v = 4);
-      let pos = x.put(|v| *v = 5);
+      x.put(|v| *v = Some(4));
+      let pos = x.put(|v| *v = Some(5));
       assert_eq!(pos, 4);
       let i = x.iter();
       assert_eq!(i.count, 2);
@@ -288,33 +293,33 @@ mod tests {
 
   #[test]
   fn sum_available() {
-    let mut x = CircularBuffer::new(4, 0 as i32);
-    x.put(|v| *v = 2);
-    x.put(|v| *v = 4);
-    x.put(|v| *v = 6);
-    x.put(|v| *v = 8);
-    x.put(|v| *v = 10);
+    let mut x = CircularBuffer::new(4);
+    x.put(|v| *v = Some(2));
+    x.put(|v| *v = Some(4));
+    x.put(|v| *v = Some(6));
+    x.put(|v| *v = Some(8));
+    x.put(|v| *v = Some(10));
     let sum = x.iter().take(3).fold(0, |acc, num| acc + num);
     assert_eq!(sum, 18);
   }
 
   #[test]
   fn overload_buffer() {
-    let mut x = CircularBuffer::new(2, 0 as i32);
-    x.put(|v| *v = 1);
-    x.put(|v| *v = 2);
-    x.put(|v| *v = 3);
+    let mut x = CircularBuffer::new(2);
+    x.put(|v| *v = Some(1));
+    x.put(|v| *v = Some(2));
+    x.put(|v| *v = Some(3));
     assert_eq!(x.iter().count(), 2);
   }
 
   #[test]
   fn read_twice() {
-    let mut x = CircularBuffer::new(2, 0 as i32);
-    x.put(|v| *v = 1);
+    let mut x = CircularBuffer::new(2);
+    x.put(|v| *v = Some(1));
     assert_eq!(x.iter().count(), 1);
     assert_eq!(x.iter().count(), 0);
-    x.put(|v| *v = 2);
-    x.put(|v| *v = 3);
+    x.put(|v| *v = Some(2));
+    x.put(|v| *v = Some(3));
     assert_eq!(x.iter().count(), 2);
     assert_eq!(x.iter().count(), 0);
   }

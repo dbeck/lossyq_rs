@@ -5,12 +5,30 @@ mod tests {
   use super::*;
 
   #[test]
+  fn option_i32() {
+    let (mut tx, mut _rx) = spsc::channel(2);
+    tx.put( |v| *v = Some(1) );
+  }
+
+  #[test]
+  fn string_literal() {
+    let (mut tx, mut _rx) = spsc::channel(2);
+    tx.put( |v| *v = Some("world") );
+  }
+
+  #[test]
+  fn boxed_string_obj() {
+    let (mut tx, mut _rx) = spsc::channel(2);
+    tx.put( |v| *v = Some(String::from("world")) );
+  }
+
+  #[test]
   fn with_spawn() {
     use std::thread;
-    let (mut tx, mut rx) = spsc::channel(2, 0 as i32);
+    let (mut tx, mut rx) = spsc::channel(2);
     let t = thread::spawn(move|| {
       for i in 1..4 {
-        tx.put(|v| *v = i);
+        tx.put(|v| *v = Some(i));
       }
     });
     t.join().unwrap();
@@ -20,10 +38,10 @@ mod tests {
 
   #[test]
   fn at_most_once() {
-    let (mut tx, mut rx) = spsc::channel(20, 0 as i32);
-    tx.put(|v| *v = 1);
-    tx.put(|v| *v = 2);
-    tx.put(|v| *v = 3);
+    let (mut tx, mut rx) = spsc::channel(20);
+    tx.put(|v| *v = Some(1));
+    tx.put(|v| *v = Some(2));
+    tx.put(|v| *v = Some(3));
     {
       // first iterator processes the single element
       // assumes I process everything else in the iterator
@@ -44,10 +62,10 @@ mod tests {
     use std::thread;
     use spsc::IterRange;
 
-    let (mut tx, mut rx) = spsc::channel(2, 0 as i32);
+    let (mut tx, mut rx) = spsc::channel(2);
     let t = thread::spawn(move|| {
       for i in 1..4 {
-        tx.put(|v| *v = i);
+        tx.put(|v| *v = Some(i));
       }
     });
     t.join().unwrap();
