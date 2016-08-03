@@ -1,3 +1,4 @@
+pub mod cb;
 pub mod spsc;
 
 #[cfg(test)]
@@ -60,7 +61,7 @@ mod tests {
   #[test]
   fn range() {
     use std::thread;
-    use spsc::IterRange;
+    use cb::IterRange;
 
     let (mut tx, mut rx) = spsc::channel(2);
     let t = thread::spawn(move|| {
