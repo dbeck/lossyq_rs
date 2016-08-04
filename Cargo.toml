@@ -1,16 +1,13 @@
 [package]
 name = "lossyq"
-version = "0.1.7"
+version = "0.1.8"
 authors = ["David Beck <david.beck.priv@gmail.com>"]
 license = "MIT/Apache-2.0"
 repository = "https://github.com/dbeck/lossyq_rs"
-description = "This is a single publisher, single consumer queue, that never blocks the writer, allowing it to overwrite past elements."
+description = "This is a concurrent single publisher, single consumer queue with fixed length, that never blocks the writer."
 keywords = ["spsc", "queue"]
 readme = "README.md"
 homepage = "https://github.com/dbeck/lossyq_rs"
 #documentation = "..."
 
 [dependencies]
-
-[dev-dependencies]
-quickcheck = "0.3"
