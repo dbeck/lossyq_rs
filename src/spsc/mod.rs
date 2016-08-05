@@ -29,6 +29,12 @@ impl<T: Send> Sender<T> {
   {
     unsafe { (*self.inner.get()).put(setter) }
   }
+
+  pub fn tmp<F>(&mut self, setter: F)
+    where F : FnMut(&mut Option<T>)
+  {
+    unsafe { (*self.inner.get()).tmp(setter) }
+  }
 }
 
 impl<T: Send> Receiver<T> {

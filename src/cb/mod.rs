@@ -4,7 +4,6 @@ pub struct CircularBuffer<T> {
   seqno       : AtomicUsize,        // the ID of the last written item
   data        : Vec<Option<T>>,     // (2*n)+1 preallocated elements
   size        : usize,              // n
-  modulo      : usize,              // makes the buffer indices unique
 
   buffer      : Vec<AtomicUsize>,   // (positions+seqno)[]
   read_priv   : Vec<usize>,         // positions belong to the reader
@@ -31,21 +30,11 @@ impl <T> CircularBuffer<T> {
 
     // size cannot be zero, silently set to one
     if size == 0 { size = 1; }
-    let mut modulo = size+1;
-
-    // find a smaller modulo number
-    for i in 3..16 {
-      if size % i != 0 {
-        modulo = i;
-        break;
-      }
-    }
 
     let mut ret = CircularBuffer {
       seqno      : AtomicUsize::new(0),
       data       : vec![],
       size       : size,
-      modulo     : modulo,
       buffer     : vec![],
       read_priv  : vec![],
       write_tmp  : 0,
@@ -57,7 +46,7 @@ impl <T> CircularBuffer<T> {
     ret.data.push(None);
 
     for i in 0..size {
-      ret.buffer.push(AtomicUsize::new((1+i) << 4));
+      ret.buffer.push(AtomicUsize::new(1+i));
       ret.read_priv.push(1+size+i);
       // 2*size
       ret.data.push(None);
@@ -91,22 +80,7 @@ impl <T> CircularBuffer<T> {
     // get a reference to the writer flag
     match self.buffer.get_mut(pos) {
       Some(v) => {
-        let mut old_flag : usize = (*v).load(Ordering::SeqCst);
-        let mut old_pos  : usize = old_flag >> 4;
-        let new_flag     : usize = (self.write_tmp << 4) + ((seqno%self.modulo) & 0xf);
-
-        loop {
-          let result = (*v).compare_and_swap(old_flag,
-                                             new_flag,
-                                             Ordering::SeqCst);
-          if result == old_flag {
-            self.write_tmp = old_pos;
-            break;
-          } else {
-            old_flag = result;
-            old_pos  = old_flag >> 4;
-          };
-        };
+        self.write_tmp = (*v).swap(self.write_tmp, Ordering::SeqCst);
       },
       None => {
         // this cannot happen under normal circumstances so just ignore it
@@ -115,6 +89,21 @@ impl <T> CircularBuffer<T> {
 
     // increase sequence number
     self.seqno.fetch_add(1, Ordering::SeqCst)
+  }
+
+  pub fn tmp<F>(&mut self, setter: F)
+    where F : FnMut(&mut Option<T>)
+  {
+    let mut setter = setter;
+
+    // get a reference to the data
+    let mut opt : Option<&mut Option<T>> = self.data.get_mut(self.write_tmp);
+
+    // write the data to the temporary writer buffer
+    match opt.as_mut() {
+      Some(v) => setter(v),
+      None => {}
+    }
   }
 
   pub fn iter(&mut self) -> CircularBufferIterator<T> {
@@ -132,30 +121,18 @@ impl <T> CircularBuffer<T> {
         Some(r) => {
           match self.buffer.get_mut(pos) {
             Some(v) => {
-              let old_flag : usize = (*v).load(Ordering::SeqCst);
-              let old_pos  : usize = old_flag >> 4;
-              let old_mod  : usize = old_flag & 0xf;
-              let chk_flag : usize = (old_pos << 4) + (((seqno-1)%self.modulo) & 0xf);
-              let new_flag : usize = (*r << 4) + old_mod;
-
-              if chk_flag == (*v).compare_and_swap(chk_flag, new_flag, Ordering::SeqCst) {
-                *r = old_pos;
-                seqno -=1;
-                count += 1;
-              } else {
-                break;
-              }
+              *r = (*v).swap(*r ,Ordering::SeqCst);
+              seqno -=1;
+              count += 1;
             },
             None => {
               // this cannot happen under any normal circumstances so just ignore it, but won't continue
-              println!("dodgy thing 3");
               break;
             }
           }
         },
         None => {
           // this cannot happen under any normal circumstances so just ignore it, but won't continue
-          println!("dodgy thing 4");
           break;
         }
       }
