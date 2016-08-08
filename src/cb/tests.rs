@@ -1,5 +1,5 @@
 #[cfg(test)]
-use super::*;
+use cb::*;
 
 #[cfg(test)]
 mod put_impl {

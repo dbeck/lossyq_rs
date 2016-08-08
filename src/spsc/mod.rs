@@ -48,6 +48,4 @@ impl<T: Send> Receiver<T> {
 }
 
 #[cfg(test)]
-mod tests {
-  // use super::CircularBuffer;
-}
+pub mod tests;
