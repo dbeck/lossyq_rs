@@ -58,6 +58,10 @@ impl <T> CircularBuffer<T> {
     ret
   }
 
+  pub fn seqno(&self) -> usize {
+    self.seqno.load(Ordering::SeqCst)
+  }
+
   pub fn put<F>(&mut self, setter: F) -> usize
     where F : FnMut(&mut Option<T>)
   {

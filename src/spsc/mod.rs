@@ -35,6 +35,11 @@ impl<T: Send> Sender<T> {
   {
     unsafe { (*self.inner.get()).tmp(setter) }
   }
+
+  pub fn seqno(&self) -> usize
+  {
+    unsafe { (*self.inner.get()).seqno() }
+  }
 }
 
 impl<T: Send> Receiver<T> {
