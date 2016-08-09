@@ -1,7 +1,5 @@
-#[cfg(test)]
 use cb::*;
 
-#[cfg(test)]
 mod put_impl {
   use super::super::*;
 
@@ -22,7 +20,6 @@ mod put_impl {
   }
 }
 
-// put_less : i32
 #[test]
 fn put_less_i32() {
   for i in 1..100 as usize {
@@ -30,7 +27,6 @@ fn put_less_i32() {
   }
 }
 
-// put_full : &str
 #[test]
 fn put_full_str() {
   for i in 1..100 as usize {
@@ -38,7 +34,6 @@ fn put_full_str() {
   }
 }
 
-// put_overflow : Box<String> (3)
 #[test]
 fn put_overflow_box_string() {
   for i in 1..100 as usize {
@@ -46,7 +41,6 @@ fn put_overflow_box_string() {
   }
 }
 
-// put_overflow : Box<String> (3)
 #[test]
 fn put_overflow_box_string_3() {
   use std::mem;
@@ -79,14 +73,12 @@ fn put_overflow_box_string_3() {
   assert_eq!(x.iter().count(), 3);
 }
 
-// iter_empty : i32 (5)
 #[test]
 fn iter_empty_i32_5() {
   let mut x = CircularBuffer::<i32>::new(5);
   assert_eq!(x.iter().count(), 0);
 }
 
-#[cfg(test)]
 mod iter_impl {
   use super::super::*;
 
@@ -144,7 +136,6 @@ fn iter_less_str() {
   }
 }
 
-// iter_less : &str (7)
 #[test]
 fn iter_less_str_7() {
   let mut x = CircularBuffer::<&str>::new(7);
@@ -154,10 +145,53 @@ fn iter_less_str_7() {
   assert_eq!(c, "HelloWorld");
 }
 
-// iter_full : Box<String> (9)
-// iter_overflow : ptr (11)
-// iter_compose : Vec<i32> (13)
-// iter_repeat : f32 (15)
+#[test]
+fn iter_full_box_string() {
+  let mut x = CircularBuffer::new(10);
+  for _i in 0..10 {
+    x.put(|v| {
+      assert!( v.is_none() );
+      *v = Some(Box::new(String::from("hello")));
+    });
+  }
+
+  let mut c = 0;
+  for i in x.iter() {
+    assert_eq!(*i, "hello");
+    c += 1;
+  }
+  assert_eq!(c, 10);
+}
+
+#[test]
+fn iter_overflow_i32() {
+  for i in 1..100 as i32 {
+    let e_min = ((i+1)*17)-i;
+    let e_max = ((i+1)*17)-1;
+    assert!(iter_impl::min_max(i as usize, i+1, 17, e_min, e_max));
+  }
+}
+
+#[test]
+fn tmp_and_put_i32() {
+  let mut x = CircularBuffer::new(1);
+  x.put(|v| {
+    assert!(v.is_none());
+    *v = Some(1);
+  });
+  x.tmp(|v| assert!(v.is_none()) );
+  x.put(|v| {
+    assert!(v.is_none());
+    *v = Some(2);
+  });
+  x.tmp(|v| assert!(v.is_some()) );
+  x.put(|v| {
+    assert!(v.is_some());
+    assert_eq!(*v, Some(1));
+    *v = Some(3);
+  });
+  x.tmp(|v| assert!(v.is_some()) );
+}
 
 // get_range_empty : Box<string> (17)
 // get_range_less : ptr (4)
@@ -165,7 +199,11 @@ fn iter_less_str_7() {
 // get_range_overflow : f32 (8)
 // get_range_repeat : &str (10)
 
-// qc less, full, overflow, 2..31
+// tmp_full
+// tmp_overflow
+
+// lossless
+// put_none
 
 #[test]
 fn empty_buffer() {

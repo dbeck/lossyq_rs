@@ -5,7 +5,7 @@ pub struct CircularBuffer<T> {
   data        : Vec<Option<T>>,     // (2*n)+1 preallocated elements
   size        : usize,              // n
 
-  buffer      : Vec<AtomicUsize>,   // (positions+seqno)[]
+  buffer      : Vec<AtomicUsize>,   // all positions
   read_priv   : Vec<usize>,         // positions belong to the reader
   write_tmp   : usize,              // temporary position where the writer writes first
   max_read    : usize,              // reader's last read seqno
