@@ -2,6 +2,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 pub struct CircularBuffer<T> {
   seqno       : AtomicUsize,        // the ID of the last written item
+  serial      : AtomicUsize,        // serial ID
   data        : Vec<Option<T>>,     // (2*n)+1 preallocated elements
   size        : usize,              // n
 
@@ -33,6 +34,7 @@ impl <T> CircularBuffer<T> {
 
     let mut ret = CircularBuffer {
       seqno      : AtomicUsize::new(0),
+      serial     : AtomicUsize::new(0),
       data       : vec![],
       size       : size,
       buffer     : vec![],
@@ -46,7 +48,7 @@ impl <T> CircularBuffer<T> {
     ret.data.push(None);
 
     for i in 0..size {
-      ret.buffer.push(AtomicUsize::new(1+i));
+      ret.buffer.push(AtomicUsize::new(((1+i)<<8)+1));
       ret.read_priv.push(1+size+i);
       // 2*size
       ret.data.push(None);
@@ -64,26 +66,38 @@ impl <T> CircularBuffer<T> {
     // get a reference to the data
     let mut opt : Option<&mut Option<T>> = self.data.get_mut(self.write_tmp);
 
+    // calculate writer flag position
+    let seqno       = self.seqno.load(Ordering::SeqCst);
+    let pos         = seqno % self.size;
+    let mut serial  = self.serial.load(Ordering::SeqCst);
+
+    if pos == 0 {
+      serial = self.serial.fetch_add(1, Ordering::SeqCst);
+      serial += 1;
+    }
+
     // write the data to the temporary writer buffer
     match opt.as_mut() {
       Some(v) => setter(v),
       None => {
-        // this cannot happen under any normal circumstances, so I just silently ignore it
-        return self.seqno.load(Ordering::SeqCst);
+        // this cannot happen under normal circumstances so the panic is only
+        // left here to trigger crash during testing
+        panic!(format!("write_tmp: {} is invalid. size is {}, seqno is {}, serial is {}",
+          self.write_tmp, self.size, seqno, serial));
       }
     }
-
-    // calculate writer flag position
-    let seqno  = self.seqno.load(Ordering::SeqCst);
-    let pos    = seqno % self.size;
 
     // get a reference to the writer flag
     match self.buffer.get_mut(pos) {
       Some(v) => {
-        self.write_tmp = (*v).swap(self.write_tmp, Ordering::SeqCst);
+        let new_flag : usize = (self.write_tmp << 8) | (serial & 0xff);
+        let result : usize = (*v).swap(new_flag, Ordering::SeqCst);
+        self.write_tmp = result >> 8;
       },
       None => {
-        // this cannot happen under normal circumstances so just ignore it
+        // this cannot happen under normal circumstances so the panic is only
+        // left here to trigger crash during testing
+        panic!(format!("pos: {} is invalid. size is {}, seqno is {}, serial is {}",pos, self.size, seqno, serial));
       }
     }
 
@@ -107,7 +121,9 @@ impl <T> CircularBuffer<T> {
   }
 
   pub fn iter(&mut self) -> CircularBufferIterator<T> {
-    let mut seqno : usize = self.seqno.load(Ordering::SeqCst);
+
+    let mut seqno : usize  = self.seqno.load(Ordering::SeqCst);
+    let mut serial : usize = self.serial.load(Ordering::SeqCst);
     let mut count : usize = 0;
     let max_read : usize = self.max_read;
     self.max_read = seqno;
@@ -121,21 +137,39 @@ impl <T> CircularBuffer<T> {
         Some(r) => {
           match self.buffer.get_mut(pos) {
             Some(v) => {
-              *r = (*v).swap(*r ,Ordering::SeqCst);
-              seqno -=1;
-              count += 1;
+              let old_flag : usize = (*v).load(Ordering::SeqCst);
+
+              // turned over?
+              if old_flag&0xff != serial&0xff {
+                break;
+              }
+
+              // now try to swap out
+              let old_pos  : usize = old_flag >> 8;
+              let chk_flag : usize = (old_pos << 8) | (serial & 0xff);
+              let new_flag : usize = (*r << 8) | (serial & 0xff);
+
+              if chk_flag == (*v).compare_and_swap(chk_flag, new_flag, Ordering::SeqCst) {
+                *r = old_pos;
+                seqno -=1;
+                count += 1;
+              } else {
+                break;
+              }
             },
             None => {
               // this cannot happen under any normal circumstances so just ignore it, but won't continue
-              break;
+              panic!(format!("pos: {} is invalid. size is {}, count is {}, seqno is {}, serial is {}",pos, self.size, count, seqno, serial));
             }
           }
         },
         None => {
           // this cannot happen under any normal circumstances so just ignore it, but won't continue
-          break;
+          panic!(format!("count: {} is invalid. size is {}, pos is {}, seqno is {}, serial is {}",count, self.size, pos, seqno, serial));
         }
       }
+
+      if pos == 0 { serial -= 1; }
     }
 
     CircularBufferIterator {

@@ -2,6 +2,7 @@ use spsc;
 use std::mem;
 use std::thread;
 use cb::IterRange;
+use std::collections::HashSet;
 use time;
 
 #[test]
@@ -25,13 +26,12 @@ fn boxed_string_obj() {
   tx.put( |v| *v = Some(Box::new(String::from("world"))) );
 }
 
-#[test]
-fn no_loss() {
+fn no_loss(sz: usize) {
   // how to prevent overwrite
-  // passing 1_000_000 values without loss
-  let (mut tx, mut rx) = spsc::channel::<i32>(2);
+  // passing 100_000 values without loss
+  let (mut tx, mut rx) = spsc::channel::<i32>(sz);
   let t = thread::spawn(move|| {
-    for i in 0..1_000_000i32 {
+    for i in 0..10_000i32 {
       let mut x = Some(i);
       loop {
         tx.put(|v| mem::swap(v, &mut x));
@@ -55,18 +55,30 @@ fn no_loss() {
   });
 
   let started_at = time::precise_time_s();
-  let mut recvd = vec![];
+  let mut recvd = HashSet::new();
   loop {
-    if recvd.len() == 1_000_000 { break; }
+    if recvd.len() == 10_000 { break; }
     for i in rx.iter() {
-      recvd.push(i);
+      assert_eq!(recvd.contains(&i), false);
+      recvd.insert(i);
     }
     if (started_at+20.0) < time::precise_time_s() {
       break;
     }
   }
-  assert_eq!(recvd.len(), 1_000_000);
+  for i in 0..10_000i32 {
+    assert_eq!(recvd.get(&i), Some(&i));
+    assert_eq!(true, recvd.contains(&i));
+  }
+  assert_eq!(recvd.len(), 10_000);
   t.join().unwrap();
+}
+
+#[test]
+fn no_loss_iter() {
+  for i in 0..40 as usize {
+    no_loss(1+(i*17));
+  }
 }
 
 #[test]
