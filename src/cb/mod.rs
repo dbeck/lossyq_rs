@@ -2,7 +2,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 pub struct CircularBuffer<T> {
   seqno       : AtomicUsize,        // the ID of the last written item
-  serial      : AtomicUsize,        // serial ID
+  seqno_priv  : usize,
   data        : Vec<Option<T>>,     // (2*n)+1 preallocated elements
   size        : usize,              // n
 
@@ -33,14 +33,14 @@ impl <T> CircularBuffer<T> {
     if size == 0 { size = 1; }
 
     let mut ret = CircularBuffer {
-      seqno      : AtomicUsize::new(0),
-      serial     : AtomicUsize::new(0),
-      data       : vec![],
-      size       : size,
-      buffer     : vec![],
-      read_priv  : vec![],
-      write_tmp  : 0,
-      max_read   : 0,
+      seqno       : AtomicUsize::new(0),
+      seqno_priv  : 0,
+      data        : vec![],
+      size        : size,
+      buffer      : vec![],
+      read_priv   : vec![],
+      write_tmp   : 0,
+      max_read    : 0,
     };
 
     // make sure there is enough place and fill it with the
@@ -48,7 +48,7 @@ impl <T> CircularBuffer<T> {
     ret.data.push(None);
 
     for i in 0..size {
-      ret.buffer.push(AtomicUsize::new(((1+i)<<8)+1));
+      ret.buffer.push(AtomicUsize::new(((1+i)<<4)+1));
       ret.read_priv.push(1+size+i);
       // 2*size
       ret.data.push(None);
@@ -59,7 +59,7 @@ impl <T> CircularBuffer<T> {
   }
 
   pub fn seqno(&self) -> usize {
-    self.seqno.load(Ordering::SeqCst)
+    self.seqno.load(Ordering::SeqCst) >> 4
   }
 
   pub fn put<F>(&mut self, setter: F) -> usize
@@ -71,14 +71,11 @@ impl <T> CircularBuffer<T> {
     let mut opt : Option<&mut Option<T>> = self.data.get_mut(self.write_tmp);
 
     // calculate writer flag position
-    let seqno       = self.seqno.load(Ordering::SeqCst);
+    let mut serial  = self.seqno_priv;
+    let seqno       = serial >> 4;
     let pos         = seqno % self.size;
-    let mut serial  = self.serial.load(Ordering::SeqCst);
 
-    if pos == 0 {
-      serial = self.serial.fetch_add(1, Ordering::SeqCst);
-      serial += 1;
-    }
+    if pos == 0 { serial += 1; }
 
     // write the data to the temporary writer buffer
     match opt.as_mut() {
@@ -94,9 +91,9 @@ impl <T> CircularBuffer<T> {
     // get a reference to the writer flag
     match self.buffer.get_mut(pos) {
       Some(v) => {
-        let new_flag : usize = (self.write_tmp << 8) | (serial & 0xff);
+        let new_flag : usize = (self.write_tmp << 4) | (serial & 0xf);
         let result : usize = (*v).swap(new_flag, Ordering::SeqCst);
-        self.write_tmp = result >> 8;
+        self.write_tmp = result >> 4;
       },
       None => {
         // this cannot happen under normal circumstances so the panic is only
@@ -105,8 +102,9 @@ impl <T> CircularBuffer<T> {
       }
     }
 
-    // increase sequence number
-    self.seqno.fetch_add(1, Ordering::SeqCst)
+    // increase sequence number and return the old one
+    self.seqno_priv = ((seqno+1) << 4) | serial&0xf;
+    self.seqno.swap(self.seqno_priv, Ordering::SeqCst) >> 4
   }
 
   pub fn tmp<F>(&mut self, setter: F)
@@ -126,8 +124,8 @@ impl <T> CircularBuffer<T> {
 
   pub fn iter(&mut self) -> CircularBufferIterator<T> {
 
-    let mut seqno : usize  = self.seqno.load(Ordering::SeqCst);
-    let mut serial : usize = self.serial.load(Ordering::SeqCst);
+    let mut serial : usize = self.seqno.load(Ordering::SeqCst);
+    let mut seqno : usize  = serial >> 4;
     let mut count : usize = 0;
     let max_read : usize = self.max_read;
     self.max_read = seqno;
@@ -144,14 +142,14 @@ impl <T> CircularBuffer<T> {
               let old_flag : usize = (*v).load(Ordering::SeqCst);
 
               // turned over?
-              if old_flag&0xff != serial&0xff {
+              if old_flag&0xf != serial&0xf {
                 break;
               }
 
               // now try to swap out
-              let old_pos  : usize = old_flag >> 8;
-              let chk_flag : usize = (old_pos << 8) | (serial & 0xff);
-              let new_flag : usize = (*r << 8) | (serial & 0xff);
+              let old_pos  : usize = old_flag >> 4;
+              let chk_flag : usize = (old_pos << 4) | (serial & 0xf);
+              let new_flag : usize = (*r << 4) | (serial & 0xf);
 
               if chk_flag == (*v).compare_and_swap(chk_flag, new_flag, Ordering::SeqCst) {
                 *r = old_pos;
