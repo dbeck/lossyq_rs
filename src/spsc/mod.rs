@@ -1,3 +1,5 @@
+pub mod noloss;
+
 use std::cell::UnsafeCell;
 use std::sync::Arc;
 use super::cb::{CircularBuffer, CircularBufferIterator};
