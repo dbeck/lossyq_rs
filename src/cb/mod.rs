@@ -35,10 +35,10 @@ impl <T> CircularBuffer<T> {
     let mut ret = CircularBuffer {
       seqno       : AtomicUsize::new(0),
       seqno_priv  : 0,
-      data        : vec![],
+      data        : Vec::with_capacity(2*size+1),
       size        : size,
-      buffer      : vec![],
-      read_priv   : vec![],
+      buffer      : Vec::with_capacity(size),
+      read_priv   : Vec::with_capacity(size),
       write_tmp   : 0,
       max_read    : 0,
     };
