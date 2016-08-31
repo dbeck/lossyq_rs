@@ -59,7 +59,7 @@ impl <T> CircularBuffer<T> {
   }
 
   pub fn seqno(&self) -> usize {
-    self.seqno.load(Ordering::SeqCst) >> 4
+    self.seqno.load(Ordering::Acquire) >> 4
   }
 
   pub fn put<F>(&mut self, setter: F) -> usize
@@ -92,7 +92,7 @@ impl <T> CircularBuffer<T> {
     match self.buffer.get_mut(pos) {
       Some(v) => {
         let new_flag : usize = (self.write_tmp << 4) | (serial & 0xf);
-        let result : usize = (*v).swap(new_flag, Ordering::SeqCst);
+        let result : usize = (*v).swap(new_flag, Ordering::AcqRel);
         self.write_tmp = result >> 4;
       },
       None => {
@@ -104,7 +104,7 @@ impl <T> CircularBuffer<T> {
 
     // increase sequence number and return the old one
     self.seqno_priv = ((seqno+1) << 4) | serial&0xf;
-    self.seqno.swap(self.seqno_priv, Ordering::SeqCst) >> 4
+    self.seqno.swap(self.seqno_priv, Ordering::AcqRel) >> 4
   }
 
   pub fn tmp<F>(&mut self, setter: F)
@@ -124,7 +124,7 @@ impl <T> CircularBuffer<T> {
 
   pub fn iter(&mut self) -> CircularBufferIterator<T> {
 
-    let mut serial : usize = self.seqno.load(Ordering::SeqCst);
+    let mut serial : usize = self.seqno.load(Ordering::Acquire);
     let mut seqno : usize  = serial >> 4;
     let mut count : usize = 0;
     let max_read : usize = self.max_read;
@@ -139,7 +139,7 @@ impl <T> CircularBuffer<T> {
         Some(r) => {
           match self.buffer.get_mut(pos) {
             Some(v) => {
-              let old_flag : usize = (*v).load(Ordering::SeqCst);
+              let old_flag : usize = (*v).load(Ordering::Acquire);
 
               // turned over?
               if old_flag&0xf != serial&0xf {
@@ -151,7 +151,7 @@ impl <T> CircularBuffer<T> {
               let chk_flag : usize = (old_pos << 4) | (serial & 0xf);
               let new_flag : usize = (*r << 4) | (serial & 0xf);
 
-              if chk_flag == (*v).compare_and_swap(chk_flag, new_flag, Ordering::SeqCst) {
+              if chk_flag == (*v).compare_and_swap(chk_flag, new_flag, Ordering::AcqRel) {
                 *r = old_pos;
                 seqno -=1;
                 count += 1;
@@ -183,7 +183,7 @@ impl <T> CircularBuffer<T> {
   }
 }
 
-impl <'_, T: '_> Iterator for CircularBufferIterator<'_, T> {
+impl <'a, T: 'a> Iterator for CircularBufferIterator<'a, T> {
   type Item = T;
 
   fn next(&mut self) -> Option<T> {
@@ -201,7 +201,7 @@ impl <'_, T: '_> Iterator for CircularBufferIterator<'_, T> {
   }
 }
 
-impl <'_, T: '_> IterRange for CircularBufferIterator<'_, T> {
+impl <'a, T: 'a> IterRange for CircularBufferIterator<'a, T> {
   fn get_range(&self) -> (usize, usize) {
     (self.start, self.start+self.count)
   }

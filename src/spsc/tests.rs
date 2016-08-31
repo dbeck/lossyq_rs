@@ -119,7 +119,7 @@ fn pour_in(sz: usize) {
       let mut x = Some(i);
       pour(&mut x, &mut tx, &mut dest);
     }
-    flag.swap(true, atomic::Ordering::SeqCst);
+    flag.swap(true, atomic::Ordering::AcqRel);
     dest
   });
 
@@ -132,10 +132,10 @@ fn pour_in(sz: usize) {
       assert_eq!(recvd.contains(&i), false);
       recvd.insert(i);
     }
-    if flag2.load(atomic::Ordering::SeqCst) == true {
+    if flag2.load(atomic::Ordering::Acquire) == true {
       retry -= 1;
       if retry == 0 {
-        break;        
+        break;
       }
     }
     if (started_at+10.0) < time::precise_time_s() {
