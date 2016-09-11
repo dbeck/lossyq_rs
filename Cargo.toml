@@ -1,6 +1,6 @@
 [package]
 name = "lossyq"
-version = "0.1.17"
+version = "0.1.18"
 authors = ["David Beck <david.beck.priv@gmail.com>"]
 license = "MIT/Apache-2.0"
 repository = "https://github.com/dbeck/lossyq_rs"
@@ -10,5 +10,5 @@ readme = "README.md"
 homepage = "https://github.com/dbeck/lossyq_rs"
 #documentation = "..."
 
-[dependencies]
+[dev-dependencies]
 time = "0.1"
