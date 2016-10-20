@@ -26,16 +26,19 @@ impl<T: Send> Sender<T> {
     Sender { inner: inner, }
   }
 
+  #[inline(always)]
   pub fn put<F>(&mut self, setter: F) -> usize
       where F : FnMut(&mut Option<T>) {
     unsafe { (*self.inner.get()).put(setter) }
   }
 
+  #[inline(always)]
   pub fn tmp<F>(&mut self, setter: F)
       where F : FnMut(&mut Option<T>){
     unsafe { (*self.inner.get()).tmp(setter) }
   }
 
+  #[inline(always)]
   pub fn seqno(&self) -> usize{
     unsafe { (*self.inner.get()).seqno() }
   }
@@ -46,10 +49,12 @@ impl<T: Send> Receiver<T> {
     Receiver { inner: inner, }
   }
 
+  #[inline(always)]
   pub fn iter(&mut self) -> CircularBufferIterator<T> {
     unsafe { (*self.inner.get()).iter() }
   }
 
+  #[inline(always)]
   pub fn seqno(&self) -> usize{
     unsafe { (*self.inner.get()).seqno() }
   }

@@ -58,10 +58,12 @@ impl <T> CircularBuffer<T> {
     ret
   }
 
+  #[inline(always)]
   pub fn seqno(&self) -> usize {
     self.seqno.load(Ordering::Acquire) >> 4
   }
 
+  #[inline(always)]
   pub fn put<F>(&mut self, setter: F) -> usize
     where F : FnMut(&mut Option<T>)
   {
@@ -103,7 +105,7 @@ impl <T> CircularBuffer<T> {
     }
 
     // increase sequence number and return the old one
-    self.seqno_priv = ((seqno+1) << 4) | serial&0xf;
+    self.seqno_priv = ((seqno+1) << 4) | (serial&0xf);
     self.seqno.swap(self.seqno_priv, Ordering::AcqRel) >> 4
   }
 
@@ -122,6 +124,7 @@ impl <T> CircularBuffer<T> {
     }
   }
 
+  #[inline(always)]
   pub fn iter(&mut self) -> CircularBufferIterator<T> {
 
     let mut serial : usize = self.seqno.load(Ordering::Acquire);
@@ -186,6 +189,7 @@ impl <T> CircularBuffer<T> {
 impl <'a, T: 'a> Iterator for CircularBufferIterator<'a, T> {
   type Item = T;
 
+  #[inline(always)]
   fn next(&mut self) -> Option<T> {
     use std::mem;
     if self.count > 0 {
@@ -202,9 +206,13 @@ impl <'a, T: 'a> Iterator for CircularBufferIterator<'a, T> {
 }
 
 impl <'a, T: 'a> IterRange for CircularBufferIterator<'a, T> {
+
+  #[inline(always)]
   fn get_range(&self) -> (usize, usize) {
     (self.start, self.start+self.count)
   }
+
+  #[inline(always)]
   fn next_id(&self) -> Option<usize> {
     if self.count > 0 {
       Some(self.start)
